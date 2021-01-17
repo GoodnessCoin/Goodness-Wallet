@@ -1,271 +1,136 @@
-#  Goodness wallet Graphical User Interface
-#  Based on Bytecoin wallet
-#
-#  First updtate submodules
-#  git submodule update --init --recursive
-#  git submodule foreach git pull origin master
-#
+cmake_minimum_required(VERSION 3.5)
+project(goodness VERSION 5.0.0)
 
-cmake_minimum_required(VERSION 3.1)
-
-#Set build version
-set(VERSION_MAJOR "5")
-set(VERSION_MINOR "0.0")
-set(VERSION "${VERSION_MAJOR}.${VERSION_MINOR}")
+#----------------#
+# Global options #
+#----------------#
+message(STATUS "------- Starting configuration ---------")
+# Enabling C++11
 set(CMAKE_CXX_STANDARD 11)
-set(ARCH native CACHE STRING "CPU to build for: -march value or default")
-if("${ARCH}" STREQUAL "default")
-    set(ARCH_FLAG "default")
-else()
-    set(ARCH_FLAG "-march=${ARCH}")
+set(CMAKE_CXX_EXTENSIONS OFF)
+# Default build type
+set(DEFAULT_BUILD_TYPE "Release")
+# default static build without tests
+set(STATIC ON CACHE BOOL "Link libraries statically")
+# Organize targets into folders
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+set(CMAKE_SUPPRESS_REGENERATION ON)
+set(CMAKE_SKIP_PACKAGE_ALL_DEPENDENCY ON)
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
+set(COMMIT_ID_IN_VERSION ON CACHE BOOL "Include git commit # in Version")
+set(BUILD_TESTS OFF CACHE BOOL "build tests")
+set(PORTABLE ON)
+
+# Tags the version for tests and betas, comment for release
+# set(PROJECT_VERSION_TWEAK "heavytest")
+
+
+#----------------#
+# Cooking stuffs #
+#----------------#
+#get rid of "QT_QMAKE_EXECUTABLE not used by the project" in QtCreator
+set(ignoreMe "${QT_QMAKE_EXECUTABLE}")
+
+# Handle build types and set possible values of build type for cmake-gui
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  message(STATUS "Setting build type to '${DEFAULT_BUILD_TYPE}' as none was specified.")
+  set(CMAKE_BUILD_TYPE "${DEFAULT_BUILD_TYPE}" CACHE STRING "Choose the type of build." FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
-find_package(Git QUIET)
-if(Git_FOUND OR GIT_FOUND)
-    message(STATUS "Found Git: ${GIT_EXECUTABLE}")
-    execute_process(COMMAND git rev-parse --abbrev-ref HEAD  # Get the current branch
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        OUTPUT_VARIABLE GIT_BRANCH
-        OUTPUT_STRIP_TRAILING_WHITESPACE)
 
-    execute_process(COMMAND git log -1 --format=%h # Get latest commit hash
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        OUTPUT_VARIABLE COMMIT_ID
-        OUTPUT_STRIP_TRAILING_WHITESPACE)
-else()
-    message(STATUS "Git not found !")
-    set(GIT_BRANCH "unknown")
-    set(COMMIT_ID "unknown")
-endif()
+# Set version
+find_package(BuildVersion REQUIRED)
+# Threads
+find_package(Threads)
 
-set(GIT_REVISION "${COMMIT_ID}-${CMAKE_BUILD_TYPE}")
-foreach(p
-        CMP0071 # 3.1: Let AUTOMOC and AUTOUIC process GENERATED files
-        )
-    if(POLICY ${p})
-        cmake_policy(SET ${p} NEW)
-    endif()
-endforeach()
-# for ninja
-cmake_policy(SET CMP0058 NEW)
-
-include(CryptoNoteWallet.cmake)
-include(externals/QR-Code-generator.cmake)
-
-
-project(${CN_PROJECT_NAME})
-
-set(CRYPTONOTE_LIB cryptonote)
-
-
-find_package(Qt5 REQUIRED
-    Gui
-    Widgets
-    Network
-    DBus
-    Svg
-    )
-
-include_directories(
-    ${CMAKE_CURRENT_BINARY_DIR}
+#----------#
+# includes #
+#----------#
+include_directories(include src external "${CMAKE_CURRENT_BINARY_DIR}/version")
+include_directories(include
     src
-    include
-    cryptonote/external
-    cryptonote/external/rocksdb/include/
-    cryptonote/include
-    cryptonote/src
-    externals/QR-Code-generator/cpp/
-    ${Qt5DBus_INCLUDE_DIRS}
+    external
+    "${CMAKE_CURRENT_BINARY_DIR}/version"
     )
+if(APPLE)
+    include_directories(SYSTEM /usr/include/malloc)
+    enable_language(ASM)
+endif()
 
-  set(WALLET_RESOURCES src/resources.qrc)
-  set(CMAKE_AUTOMOC ON)
-  set(CMAKE_AUTOUIC ON)
-  set(CMAKE_AUTORCC ON)
 
-#include_directories( "${CMAKE_CURRENT_BINARY_DIR}/version")
+#-----------#
+# Platforms #
+#-----------#
+if(MSVC)
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/Platform/Windows)
+elseif(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET 10.10)
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/Platform/OSX)
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/Platform/Posix)
+else()
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/Platform/Linux)
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/Platform/Posix)
+endif()
 
-set(Boost_USE_STATIC_LIBS ON)
-if(WIN32)
-    set(Boost_USE_STATIC_RUNTIME ON)
-endif(WIN32)
+set(STATIC ${MSVC} CACHE BOOL "Link libraries statically")
 
-find_package(Boost 1.58 REQUIRED COMPONENTS date_time filesystem program_options regex serialization system thread chrono)
-if ((${Boost_MAJOR_VERSION} EQUAL 1) AND (${Boost_MINOR_VERSION} EQUAL 54))
-    message(SEND_ERROR "Boost version 1.58 is unsupported, more details are available here http://goo.gl/RrCFmA")
-endif ()
 
-include_directories(${Boost_INCLUDE_DIRS})
-link_directories(${Boost_LIBRARY_DIRS})
-
-add_definitions(-DGIT_REVISION="${GIT_REVISION}")
-
-file(GLOB_RECURSE CRYPTONOTE_SOURCES
-    cryptonote/external/miniupnpc/
-    cryptonote/src/BlockchainExplorer/BlockchainExplorer.cpp
-    cryptonote/src/BlockchainExplorer/BlockchainExplorerErrors.cpp
-    cryptonote/src/Common/Base58.cpp
-    cryptonote/src/Common/CommandLine.cpp
-    cryptonote/src/Common/Util.cpp
-    cryptonote/src/Common/StringTools.cpp
-    cryptonote/src/Common/JsonValue.cpp
-    cryptonote/src/Common/ConsoleTools.cpp
-    cryptonote/src/Common/MemoryInputStream.cpp
-    cryptonote/src/Common/PathTools.cpp
-    cryptonote/src/Common/StdInputStream.cpp
-    cryptonote/src/Common/StdOutputStream.cpp
-    cryptonote/src/Common/StreamTools.cpp
-    cryptonote/src/Common/StringOutputStream.cpp
-    cryptonote/src/Common/StringView.cpp
-    cryptonote/src/Common/VectorOutputStream.cpp
-    cryptonote/src/Common/ScopeExit.cpp
-    cryptonote/src/ConnectivityTool/ConnectivityTool.cpp
-    cryptonote/src/crypto/blake256.c
-    cryptonote/src/crypto/chacha8.cpp
-    cryptonote/src/crypto/crypto-ops-data.c
-    cryptonote/src/crypto/crypto-ops.c
-    cryptonote/src/crypto/crypto.cpp
-    cryptonote/src/crypto/groestl.c
-    cryptonote/src/crypto/hash-extra-blake.c
-    cryptonote/src/crypto/hash-extra-groestl.c
-    cryptonote/src/crypto/hash-extra-jh.c
-    cryptonote/src/crypto/hash-extra-skein.c
-    cryptonote/src/crypto/hash.c
-    cryptonote/src/crypto/jh.c
-    cryptonote/src/crypto/keccak.c
-    cryptonote/src/crypto/oaes_lib.c
-    cryptonote/src/crypto/random.c
-    cryptonote/src/crypto/skein.c
-    cryptonote/src/crypto/slow-hash.c
-    cryptonote/src/crypto/aesb.c
-    cryptonote/src/crypto/tree-hash.c
-    cryptonote/src/CryptoNoteCore/*.cpp
-    cryptonote/src/CryptoNoteProtocol/*.cpp
-    cryptonote/src/Daemon/*.cpp
-    cryptonote/src/HTTP/*.cpp
-    cryptonote/src/InProcessNode/InProcessNode.cpp
-    cryptonote/src/InProcessNode/InProcessNodeErrors.cpp
-    cryptonote/src/Logging/*.cpp
-    cryptonote/src/NodeRpcProxy/NodeErrors.cpp
-    cryptonote/src/NodeRpcProxy/NodeRpcProxy.cpp
-    cryptonote/src/P2p/*.cpp
-    cryptonote/src/Rpc/*.cpp
-    cryptonote/src/Serialization/*.cpp
-    cryptonote/src/Transfers/BlockchainSynchronizer.cpp
-    cryptonote/src/Transfers/SynchronizationState.cpp
-    cryptonote/src/Transfers/TransfersConsumer.cpp
-    cryptonote/src/Transfers/TransfersContainer.cpp
-    cryptonote/src/Transfers/TransfersSubscription.cpp
-    cryptonote/src/Transfers/TransfersSynchronizer.cpp
-    cryptonote/src/Wallet/*.cpp
-    cryptonote/src/WalletLegacy/KeysStorage.cpp
-    cryptonote/src/WalletLegacy/WalletLegacy.cpp
-    cryptonote/src/WalletLegacy/WalletHelper.cpp
-    cryptonote/src/WalletLegacy/WalletLegacySerializer.cpp
-    cryptonote/src/WalletLegacy/WalletLegacySerialization.cpp
-    cryptonote/src/WalletLegacy/WalletTransactionSender.cpp
-    cryptonote/src/WalletLegacy/WalletUnconfirmedTransactions.cpp
-    cryptonote/src/WalletLegacy/WalletUserTransactionsCache.cpp
-    cryptonote/src/System/ContextGroup.cpp
-    cryptonote/src/System/Event.cpp
-    cryptonote/src/System/EventLock.cpp
-    cryptonote/src/System/InterruptedException.cpp
-    cryptonote/src/System/Ipv4Address.cpp
-    cryptonote/src/System/TcpStream.cpp
-    cryptonote/src/JsonRpcServer/*.cpp
-    cryptonote/src/PaymentGate/*.cpp
-    cryptonote/src/PaymentGateService/*.cpp
-    cryptonote/src/Miner/*.cpp
-    )
-
-file(GLOB_RECURSE WALLET_SOURCES src/*.cpp)
-file(GLOB_RECURSE WALLET_HEADERS src/*.h)
-file(GLOB_RECURSE WALLET_FORMS src/Gui/*/*.ui)
+# // todo clean this mess...
 
 if(MSVC)
-    include_directories(Platform/Windows)
-    set(WALLET_SOURCES ${WALLET_SOURCES} ${CMAKE_SOURCE_DIR}/Platform/Windows/ApplicationEventHandler.cpp)
-elseif(APPLE)
-    include_directories(Platform/OSX)
-    include_directories(Platform/Posix)
-    set(WALLET_SOURCES ${WALLET_SOURCES} ${CMAKE_SOURCE_DIR}/Platform/OSX/ApplicationEventHandler.h ${CMAKE_SOURCE_DIR}/Platform/OSX/ApplicationEventHandler.mm ${CMAKE_SOURCE_DIR}/Platform/OSX/INotificationMonitorObserver.h ${CMAKE_SOURCE_DIR}/Platform/OSX/NotificationMonitor.h ${CMAKE_SOURCE_DIR}/Platform/OSX/NotificationMonitor.mm ${CMAKE_SOURCE_DIR}/Platform/OSX/WalletApplication.mm )
-    set(WALLET_SOURCES ${WALLET_SOURCES} ${CMAKE_SOURCE_DIR}/Platform/Posix/System/MemoryMappedFile.cpp)
-else()
-    include_directories(Platform/Linux)
-    include_directories(Platform/Posix)
-    set(WALLET_SOURCES ${WALLET_SOURCES} ${CMAKE_SOURCE_DIR}/Platform/Linux/ApplicationEventHandler.cpp)
-    set(WALLET_SOURCES ${WALLET_SOURCES} ${CMAKE_SOURCE_DIR}/Platform/Posix/System/MemoryMappedFile.cpp)
-endif()
-
-#qt5_wrap_cpp(WALLET_HEADERS_MOC ${WALLET_HEADERS})
-qt5_wrap_ui(WALLET_FORMS_HEADERS ${WALLET_FORMS})
-#qt5_add_resources(WALLET_RESOURCES_RCC ${WALLET_RESOURCES})
-
-if (WIN32)
-    if (NOT MSVC)
-        message(FATAL_ERROR "Only MSVC is supported on this platform")
-    endif ()
-
-    add_definitions(/D_CRT_SECURE_NO_WARNINGS /D_WIN32_WINNT=0x0600 /DSTATICLIB)
-    include_directories(cryptonote/src/Platform/msc)
-
-    set(PLATFORM_DIR Windows)
-    set(BUILD_PLATFORM WIN32)
-    set(BUILD_RESOURCES src/goodnesswallet.rc)
-    set(QTMAIN Qt5::WinMain)
-
-   # Force static build mostly for rocksdb
-    foreach(VAR CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_RELWITHDEBINFO CMAKE_C_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELEASE)
+    add_definitions("/bigobj /MP /W3 /GS- /D_CRT_SECURE_NO_WARNINGS /wd4996 /wd4345 /D_WIN32_WINNT=0x0600 /DWIN32_LEAN_AND_MEAN /DGTEST_HAS_TR1_TUPLE=0 /D_VARIADIC_MAX=8 /D__SSE4_1__")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:10485760")
+    if(STATIC)
+        foreach(VAR CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_RELWITHDEBINFO CMAKE_C_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELEASE)
             string(REPLACE "/MD" "/MT" ${VAR} "${${VAR}}")
-    endforeach()
-
-elseif (UNIX)
-
-    set(CRYPTONOTE_SOURCES ${CRYPTONOTE_SOURCES} cryptonote/external/miniupnpc/minissdpc.c)
-
-    if (APPLE)
-        enable_language(ASM)
-        file(GLOB_RECURSE OBJC_SOURCES src/*.mm)
-        set(WALLET_SOURCES ${WALLET_SOURCES} ${OBJC_SOURCES})
-        set(PLATFORM_DIR OSX)
-        set(MACOSX_BUNDLE_INFO_STRING "Iridium GUI wallet v${VERSION} ${GIT_REVISION}")
-        set(MACOSX_BUNDLE_LONG_VERSION_STRING "${VERSION} ${GIT_REVISION}")
-        set(MACOSX_BUNDLE_BUNDLE_NAME IridiumWallet)
-        set(MACOSX_BUNDLE_SHORT_VERSION_STRING "${VERSION}")
-        set(MACOSX_BUNDLE_BUNDLE_VERSION "${VERSION}")
-#        if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
-#        endif()
-
-        find_package(Qt5PrintSupport REQUIRED)
-        include_directories(/usr/include/malloc)
-
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -maes -std=c++11 -stdlib=libc++")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11 -maes -D_DARWIN_C_SOURCE")
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -framework Cocoa -framework OpenGL -framework CoreFoundation -framework Carbon -framework IOKit -L/usr/lib")
-
-        set(MACOSX_BUNDLE_ICON_FILE iridium.icns)
-        set(APPLICATION_ICON src/images/iridium.icns)
-        set_source_files_properties(${APPLICATION_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
-
-        set(BUILD_PLATFORM MACOSX_BUNDLE)
-        set(BUILD_RESOURCES ${APPLICATION_ICON})
-
-        GET_TARGET_PROPERTY(QT_LIB_DIR "${Qt5Widgets_LIBRARIES}" LOCATION)
-        GET_FILENAME_COMPONENT(QT_LIB_DIR "${QT_LIB_DIR}" PATH)
-
-        # remove ranlib complaining for no symbols
-        set(CMAKE_C_ARCHIVE_CREATE   "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
-        set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
-        set(CMAKE_C_ARCHIVE_FINISH   "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
-        set(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
-        set(RELEASE_FLAGS "-Wno-uninitialized -Wno-deprecated-declarations")
-    else(APPLE)
-        set(PLATFORM_DIR Linux)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -maes -std=c++11")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -maes -std=c11")
-    endif (APPLE)
-endif ()
-
-if(CMAKE_C_COMPILER_ID STREQUAL "GNU" AND NOT (CMAKE_C_COMPILER_VERSION VERSION_LESS 4.8))
+        endforeach()
+    endif()
+    include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/msc)
+else()
+    if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+        # This option has no effect in glibc version less than 2.20.
+        # Since glibc 2.20 _BSD_SOURCE is deprecated, this macro is recomended instead
+        add_definitions("-D_DEFAULT_SOURCE -D_GNU_SOURCE")
+    endif()
+    set(ARCH native CACHE STRING "CPU to build for: -march value or default")
+    if("${ARCH}" STREQUAL "default")
+        set(ARCH_FLAG "")
+    else()
+        set(ARCH_FLAG "-march=${ARCH}")
+    endif()
+    set(WARNINGS "-Wall -Wextra -Wpointer-arith -Wundef -Wvla -Wwrite-strings -Werror -Wno-error=extra -Wno-error=unused-function -Wno-error=deprecated-declarations -Wno-error=sign-compare -Wno-error=strict-aliasing -Wno-error=type-limits -Wno-unused-parameter -Wno-error=unused-variable -Wno-error=undef -Wno-error=uninitialized -Wno-error=unused-result")
+    if(CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_C_COMPILER_ID STREQUAL "AppleClang")
+        set(WARNINGS "${WARNINGS} -Wno-error=mismatched-tags -Wno-error=null-conversion -Wno-overloaded-shift-op-parentheses -Wno-error=shift-count-overflow -Wno-error=tautological-constant-out-of-range-compare -Wno-error=unused-private-field -Wno-error=unneeded-internal-declaration -Wno-error=unused-function -Wno-error=missing-braces -Wno-unused-lambda-capture -Wno-exceptions -Wno-unknown-pragmas")
+    else()
+        set(WARNINGS "${WARNINGS} -Wlogical-op -Wno-error=maybe-uninitialized -Wno-error=clobbered -Wno-error=unused-but-set-variable")
+    endif()
+    if(MINGW)
+        set(WARNINGS "${WARNINGS} -Wno-error=unused-value")
+        set(MINGW_FLAG "-DWIN32_LEAN_AND_MEAN")
+        include_directories(SYSTEM src/platform/mingw)
+    else()
+        set(MINGW_FLAG "")
+    endif()
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU" AND NOT (CMAKE_C_COMPILER_VERSION VERSION_LESS 5.1))
+        set(WARNINGS "${WARNINGS} -Wno-error=odr")
+    endif()
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU" AND (CMAKE_C_COMPILER_VERSION VERSION_GREATER 6))
+        set(WARNINGS "${WARNINGS} -Wno-logical-op -Wno-error=terminate -Wno-error=init-self")
+    endif()
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU" AND (CMAKE_C_COMPILER_VERSION VERSION_GREATER 7))
+        set(WARNINGS "${WARNINGS} -Wno-format-truncation -Wno-implicit-fallthrough -Wno-error=stringop-overflow")
+    endif()
+    set(C_WARNINGS "-Waggregate-return -Wnested-externs -Wold-style-definition -Wstrict-prototypes")
+    set(CXX_WARNINGS "-Wno-reorder -Wno-missing-field-initializers")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11 ${MINGW_FLAG} ${WARNINGS} ${C_WARNINGS} ${ARCH_FLAG} -maes")
+    if(NOT APPLE)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+    endif()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 ${MINGW_FLAG} ${WARNINGS} ${CXX_WARNINGS} ${ARCH_FLAG} -maes")
+    if(APPLE)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGTEST_HAS_TR1_TUPLE=0")
+    endif()
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU" AND NOT (CMAKE_C_COMPILER_VERSION VERSION_LESS 4.8))
         set(DEBUG_FLAGS "-g3 -Og -gdwarf-4 -fvar-tracking -fvar-tracking-assignments -fno-inline -fno-omit-frame-pointer")
     else()
         set(DEBUG_FLAGS "-g3 -O0 -fno-omit-frame-pointer")
@@ -275,137 +140,89 @@ if(CMAKE_C_COMPILER_ID STREQUAL "GNU" AND NOT (CMAKE_C_COMPILER_VERSION VERSION_
         set(DEBUG_FLAGS "${DEBUG_FLAGS} -Wno-delete-non-virtual-dtor")
     endif()
 
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${DEBUG_FLAGS}")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${DEBUG_FLAGS}")
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${RELEASE_FLAGS}")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${RELEASE_FLAGS}")
+    # release flags
+    set(RELEASE_FLAGS "-Ofast -DNDEBUG -Wno-unused-variable -Wno-uninitialized -Wno-unused-function -Wno-sign-compare")
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU" AND NOT (CMAKE_C_COMPILER_VERSION VERSION_LESS 4.8))
+        set(RELEASE_FLAGS "${RELEASE_FLAGS} -Wno-strict-aliasing -Wno-unused-but-set-variable")
+    endif()
+    if(CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_C_COMPILER_ID STREQUAL "AppleClang")
+        set(RELEASE_FLAGS "${RELEASE_FLAGS} -Wno-undef -Wno-delete-non-virtual-dtor -Wno-unused-private-field -Wno-unused-lambda-capture -Wno-exceptions")
+    endif()
 
-include_directories(cryptonote/src/Platform/${PLATFORM_DIR})
-file(GLOB PLATFORM_SOURCES cryptonote/src/Platform/${PLATFORM_DIR}/System/*)
-set(CRYPTONOTE_SOURCES ${CRYPTONOTE_SOURCES} ${PLATFORM_SOURCES} ${CRYPTONOTE_PLATFORM})
+    if(NOT APPLE)
+        # There is a clang bug that does not allow to compile code that uses AES-NI intrinsics if -flto is enabled
+        if (CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_SYSTEM_NAME STREQUAL "Linux"
+                AND CMAKE_BUILD_TYPE STREQUAL "Release" AND ((CMAKE_C_COMPILER_VERSION VERSION_GREATER 4.9) OR (CMAKE_C_COMPILER_VERSION VERSION_EQUAL 4.9)))
+            # On linux, to build in lto mode, check that ld.gold linker is used: 'update-alternatives --install /usr/bin/ld ld /usr/bin/ld.gold HIGHEST_PRIORITY'
+            set(CMAKE_AR gcc-ar)
+            set(CMAKE_RANLIB gcc-ranlib)
+        endif()
+        #set(RELEASE_FLAGS "${RELEASE_FLAGS} -flto")
+    else() # remove ranlib complaining for no symbols
+        set(CMAKE_C_ARCHIVE_CREATE   "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
+        set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
+        set(CMAKE_C_ARCHIVE_FINISH   "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
+        set(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
+    endif()
+    #if(CMAKE_C_COMPILER_ID STREQUAL "GNU" AND NOT MINGW)
+    #  set(RELEASE_FLAGS "${RELEASE_FLAGS} -fno-fat-lto-objects")
+    #endif()
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${DEBUG_FLAGS}")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${DEBUG_FLAGS}")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${RELEASE_FLAGS}")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${RELEASE_FLAGS}")
+    if(STATIC AND NOT APPLE)
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
+    endif()
+endif()
+set(BOOST_IGNORE_SYSTEM_PATHS_DEFAULT OFF)
+option(BOOST_IGNORE_SYSTEM_PATHS "Ignore boost system paths for local boost installation" ${BOOST_IGNORE_SYSTEM_PATHS_DEFAULT})
+if (${BOOST_IGNORE_SYSTEM_PATHS} STREQUAL "ON")
+  set(Boost_NO_SYSTEM_PATHS TRUE)
+endif()
+if(STATIC)
+    set(Boost_USE_STATIC_LIBS ON)
+    set(Boost_USE_STATIC_RUNTIME ON)
+endif()
+find_package(Boost 1.55 REQUIRED COMPONENTS system filesystem thread date_time chrono regex serialization program_options)
+include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
+if(MINGW)
+    set(Boost_LIBRARIES "${Boost_LIBRARIES};ws2_32;mswsock")
+elseif(APPLE)
+    set(Boost_LIBRARIES "${Boost_LIBRARIES}")
+elseif(NOT MSVC)
+    set(Boost_LIBRARIES "${Boost_LIBRARIES};rt")
+endif()
 
-add_library(${CRYPTONOTE_LIB} STATIC ${CRYPTONOTE_SOURCES})
-set_target_properties(${CRYPTONOTE_LIB} PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
-target_link_libraries(${CRYPTONOTE_LIB} upnpc-static rocksdb ${Boost_LIBRARIES} ${Qt5DBus_LIBRARIES})
 
-add_executable(${PROJECT_NAME} ${BUILD_PLATFORM} ${BUILD_RESOURCES} ${WALLET_SOURCES} ${WALLET_HEADERS} ${WALLET_FORMS_HEADERS} ${WALLET_RESOURCES})
-
-set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
-target_link_libraries(${PROJECT_NAME} rocksdb ${Boost_LIBRARIES} ${QTMAIN} ${CRYPTONOTE_LIB} ${Qt5DBus_LIBRARIES} ${QRENCODE_LIB})
-
-if (APPLE)
-  set_target_properties(${PROJECT_NAME} PROPERTIES MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/Platform/OSX/MacOSXBundleInfo.plist.in)
-  find_package(Qt5PrintSupport REQUIRED)
-  target_link_libraries(${PROJECT_NAME} Qt5::PrintSupport)
-elseif (UNIX)
-    target_link_libraries(${PROJECT_NAME} -lpthread)
-elseif (WIN32)
-    target_link_libraries(${PROJECT_NAME} rpcrt4.lib wtsapi32.lib  Imm32 Iphlpapi Winmm)
-endif (APPLE)
-
-target_link_libraries(${PROJECT_NAME} Qt5::Widgets Qt5::Gui Qt5::Network Qt5::Svg)
-
-add_subdirectory(cryptonote/external)
-message(STATUS "--------------------- Goodness Wallet build details ----------------------------")
-message(STATUS "Build : ${CMAKE_BUILD_TYPE}")
-message(STATUS "Compiler : ${CMAKE_C_COMPILER_ID} version ${CMAKE_CXX_COMPILER_VERSION}")
-message(STATUS "Branch : ${GIT_BRANCH}")
+#---------#
+# Summary #
+#---------#
+message(STATUS " ")
+message(STATUS "========== building ${PROJECT_NAME} Core version : ${PROJECT_VERSION} build ${PROJECT_VERSION_TWEAK} ${CMAKE_BUILD_TYPE} =======")
+message(STATUS "Compiler : ${CMAKE_CXX_COMPILER_ID} version ${CMAKE_CXX_COMPILER_VERSION}")
 message(STATUS "Version : ${VERSION}")
-message(STATUS "Revision : ${GIT_REVISION}")
+message(STATUS "Revision : ${COMMIT_ID}")
+message(STATUS "Arch : ${ARCH}")
+message(STATUS "Boost version : ${Boost_LIB_VERSION}")
+message(STATUS "Link libraries statically : ${STATIC}" )
 message(STATUS "Portable : ${PORTABLE}" )
+message(STATUS "Build tests : " ${BUILD_TESTS})
 message(STATUS "----------------------------------------------------------")
-configure_file("cryptonote/src/version.h.in" "version.h")
-configure_file("cryptonote/src/version.h.in" ${CMAKE_SOURCE_DIR}/src/version.h)
-configure_file("src/CryptoNoteWalletConfig.h.in" "CryptoNoteWalletConfig.h")
 
-# ---------------------------------------------------------------
-# Installation
-# ---------------------------------------------------------------
-set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
-set(CPACK_PACKAGE_VERSION ${Goodness_VERSION})
-set(CPACK_PACKAGE_VENDOR ${UN_VENDOR})
-set(CPACK_PACKAGE_CONTACT ${UN_CONTACT})
-set(CPACK_PACKAGE_DESCRIPTION ${UN_DESCRIPTION})
-set(CPACK_STRIP_FILES ON)
-if (APPLE)
-  set(CPACK_GENERATOR DragNDrop)
-  set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}")
-  find_program(MACDEPLOYQT macdeployqt PATHS ${QT5_ROOT_PATH}/bin/)
+message(STATUS "C Flags ${CMAKE_C_FLAGS_RELEASE}")
+message(STATUS "CXX Flags ${CMAKE_CXX_FLAGS_RELEASE}")
 
-  # Run Qt5 Packager for MacOS Bundles
-  install(CODE "execute_process( COMMAND \"${MACDEPLOYQT}\" \"${PROJECT_NAME}.app\")" COMPONENT Runtime)
-  install(TARGETS ${PROJECT_NAME} BUNDLE DESTINATION . COMPONENT Runtime)
+#----------#
+# sources  #
+#----------#
 
-elseif (UNIX)
-  install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
-  install(FILES src/goodnesswallet.desktop DESTINATION share/applications)
-  install(FILES src/images/goodness.png DESTINATION share/pixmaps RENAME goodness.png)
-  install(FILES COPYING DESTINATION share/doc/goodnesswallet)
+add_subdirectory(external)
+add_subdirectory(src)
 
-	SET(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
-	SET(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
-	SET(CPACK_PACKAGE_ICON src/images/goodness.png)
+if(BUILD_TESTS)
+  add_subdirectory(tests)
+else()
+  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/CTestCustom.cmake ${CMAKE_CURRENT_BINARY_DIR})
+endif()
 
-  if (NOT PACKRPM)
-    set(CPACK_GENERATOR DEB)
-    set(CPACK_DEBIAN_PACKAGE_NAME ${CPACK_PACKAGE_NAME})
-    set(CPACK_SYSTEM_NAME amd64)
-    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_VENDOR} <xrydev@gmail.com>")
-    set(CPACK_DEBIAN_PACKAGE_SECTION Office)
-    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-    set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "${UN_DESCRIPTION}")
-    set(CPACK_PACKAGE_FILE_NAME "${CPACK_DEBIAN_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}.${CPACK_SYSTEM_NAME}")
-	else ()
-    set(CPACK_GENERATOR RPM)
-    set(CPACK_SYSTEM_NAME x86_64)
-    #set(CPACK_RPM_PACKAGE_RELEASE ${VERSION_RELEASE})
-    set(CPACK_RPM_PACKAGE_LICENSE "GPL3")
-    set(CPACK_RPM_PACKAGE_GROUP Office)
-    set(CPACK_RPM_PACKAGE_REQUIRES "qt5-qtbase >= 5.3.2, qt5-qtbase-gui >= 5.3.2")
-    set(CPACK_RPM_PACKAGE_SUMMARY "${UN_SUMMARY}")
-    set(CPACK_RPM_PACKAGE_DESCRIPTION "${UN_DESCRIPTION}")
-    set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}.${CPACK_SYSTEM_NAME}")
-  endif ()
-elseif (WIN32)
-  find_program(WINDEPLOYQT windeployqt PATHS ${QT5_ROOT_PATH}/bin/)
-  install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION .)
-
-  if (PACKMSI)
-    set(CPACK_GENERATOR NSIS)
-  else ()
-  set(CPACK_GENERATOR ZIP)
-  endif ()
-  set(CPACK_PACKAGE_EXECUTABLES "${PROJECT_NAME}" "${PROJECT_NAME}")
-  set(CPACK_PACKAGE_INSTALL_DIRECTORY ${PROJECT_NAME})
-  set(CPACK_NSIS_MODIFY_PATH ON)
-  set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
-  set(CPACK_NSIS_MUI_ICON ${CMAKE_SOURCE_DIR}/src/images/goodness.ico)
-  set(CPACK_NSIS_URL_INFO_ABOUT "${UN_CONTACT}")
-  set(CPACK_NSIS_EXECUTABLES_DIRECTORY ".")
-  set(CPACK_NSIS_MENU_LINKS "${UN_CONTACT}" "Goodness Website")
-
-  add_custom_target(windeployqt ALL
-    ${WINDEPLOYQT}
-    --dir ${PROJECT_BINARY_DIR}/deploy
-    --release
-    --compiler-runtime
-    $<TARGET_FILE:${PROJECT_NAME}>
-    DEPENDS ${PROJECT_NAME}
-    COMMENT "Preparing Qt runtime dependencies")
-  install(DIRECTORY ${PROJECT_BINARY_DIR}/deploy/ DESTINATION .)
-
-  IF(CMAKE_CL_64)
-     SET(CMAKE_MSVC_ARCH x64)
-   ELSE(CMAKE_CL_64)
-     SET(CMAKE_MSVC_ARCH x86)
-  ENDIF(CMAKE_CL_64)
-
-  FIND_PROGRAM(MSVC_REDIST
-    NAMES vcredist_${CMAKE_MSVC_ARCH}.exe
-    PATHS ${PROJECT_BINARY_DIR}/deploy/)
-  GET_FILENAME_COMPONENT(vcredist_name "${MSVC_REDIST}" NAME)
-  set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "ExecWait '\\\"$INSTDIR\\\\vcredist_${CMAKE_MSVC_ARCH}.exe\\\" /install /quiet /norestart'")
-
-endif (APPLE)
-
-include(CPack)

@@ -1,3 +1,0 @@
-set(CN_PROJECT_NAME "Goodness_Wallet")
-set(CN_CURRENCY_DISPLAY_NAME "Goodness")
-set(CN_CURRENCY_TICKER "GNS")
