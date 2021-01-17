@@ -15,7 +15,15 @@ If you want to compile the latest stable release, currently in production, clone
 git clone https://github.com/GoodnessCoin/The-Goodness-Project.git
 ```
 
-Compilation informations :
+Update core submodule :
+
+```html
+$ cd iridium-wallet
+$ git submodule update --init
+$ git submodule foreach git pull origin master
+```
+
+Build :
 
 ```html
 $ git clone -b master https://github.com/GoodnessCoin/The-Goodness-Project.git
