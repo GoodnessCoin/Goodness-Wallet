@@ -146,8 +146,12 @@ const uint32_t DB_DEFAULT_MAX_OPEN_FILES                     = 500;           //
 const uint16_t DB_DEFAULT_BACKGROUND_THREADS_COUNT           = 10;            // 10 threads
 
 const char* const SEED_NODES[] = {
-   "superblockchain.con-ip.com:25070",
+  "superblockchain.con-ip.com:25069",
+  "superblockchain.con-ip.com:25070",
+  "pool.semipool.com:25069",
   "pool.semipool.com:25070",
+   "116.202.173.125:25069",
+   "79.202.173.125:25069",
 };
 
 
