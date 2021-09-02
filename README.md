@@ -18,7 +18,7 @@ git clone https://github.com/GoodnessCoin/The-Goodness-Project.git
 Update core submodule :
 
 ```html
-$ cd iridium-wallet
+$ cd The-Goodness-Project
 $ git submodule update --init
 $ git submodule foreach git pull origin master
 ```
