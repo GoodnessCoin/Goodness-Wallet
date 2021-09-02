@@ -14,6 +14,7 @@ If you want to compile the latest stable release, currently in production, clone
 ```html
 git clone https://github.com/GoodnessCoin/The-Goodness-Project.git
 ```
+**Compile on Linux:** 
 
 Update core submodule :
 
@@ -33,3 +34,12 @@ $ cd build
 $ cmake -D STATIC=ON -D CMAKE_BUILD_TYPE=RELEASE ..
 $ PORTABLE=1 make
 ```
+**Compile on Windows:**
+
+```html
+$ git clone -b master https://github.com/GoodnessCoin/The-Goodness-Project.git
+$ cd The-Goodness-Project
+$ mkdir build
+$ cd build
+$ cmake -DCMAKE_BUILD_TYPE=Release -DBOOST_ROOT=C:/local/boost_1_68_0 -G "Visual Studio 15 2017 Win64" ..
+$ MSBuild goodness.sln /p:Configuration=Release /p:PlatformToolset=v141 /m
